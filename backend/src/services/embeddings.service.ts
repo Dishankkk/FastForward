@@ -1,40 +1,57 @@
 import { pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
 
-// 1. Update the singleton type to use FeatureExtractionPipeline
 let embedder: FeatureExtractionPipeline | null = null;
 
 /**
- * Lazily loads the embedding model on first call, then reuses it.
+ * Lazily loads the embedding model on first call, then reuses it.git add backend/src/services/embeddings.service.ts
  */
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!embedder) {
-    console.log('[embeddings] loading all-MiniLM-L6-v2 model...');
-    // Typecast the returned factory promise wrapper to match our type variable
-    embedder = (await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')) as FeatureExtractionPipeline;
-    console.log('[embeddings] model loaded and cached in memory');
+    console.log('[embeddings] loading space-efficient all-MiniLM-L6-v2 model...');
+    
+    embedder = (await pipeline(
+      'feature-extraction', 
+      'Xenova/all-MiniLM-L6-v2',
+      { 
+        quantized: true 
+      }
+    )) as FeatureExtractionPipeline;
+    
+    console.log('[embeddings] model loaded and cached safely in memory');
   }
   return embedder;
 }
 
 /**
  * Converts a text string into a 384-dimensional embedding vector.
- * Returns a plain number[] ready to store in MongoDB.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const embed = await getEmbedder();
   
-  // mean_pooling=true averages the token embeddings into one
-  // sentence-level vector — standard practice for sentence similarity.
-  const output = await embed(text, { pooling: 'mean', normalize: true });
+  const sanitizedText = text.replace(/\s+/g, ' ').trim();
+  if (!sanitizedText) return new Array(EMBEDDING_DIMENSIONS).fill(0);
+
+  const output = await embed(sanitizedText, { pooling: 'mean', normalize: true });
   
   return Array.from(output.data as Float32Array);
 }
 
-
+/**
+ * Processes arrays sequentially rather than concurrently.
+ * This ensures your RAM usage stays completely flat and level!
+ */
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  return Promise.all(texts.map(generateEmbedding));
+  const results: number[][] = [];
+  
+  console.log(`[embeddings] systematically processing ${texts.length} chunks sequentially...`);
+  
+  for (let i = 0; i < texts.length; i++) {
+    const embedding = await generateEmbedding(texts[i]);
+    results.push(embedding);
+  }
+  
+  console.log(`[embeddings] successfully calculated all ${texts.length} vectors!`);
+  return results;
 }
 
-// Export the embedding dimensions as a constant so the Mongoose schema
-// and the MongoDB vector index definition stay in sync automatically.
 export const EMBEDDING_DIMENSIONS = 384;

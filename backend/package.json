@@ -4,7 +4,8 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "dev:worker": "ts-node-dev --respawn --transpile-only src/worker.ts",
-    "build" : "tsc"
+    "build": "tsc",
+  "start": "node dist/worker.js & node dist/server.js"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
